@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Hexagone Confluence — Espace Donneur d'ordre</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', sans-serif; background: #F0F4F8; color: #1A202C; -webkit-font-smoothing: antialiased; }
+  button, input, textarea, select { font-family: 'Inter', sans-serif; }
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: #F0F4F8; }
+  ::-webkit-scrollbar-thumb { background: #CBD5E0; border-radius: 3px; }
+  @keyframes fadeUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes toastIn { from { opacity:0; transform:translateX(16px); } to { opacity:1; transform:translateX(0); } }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState } = React;
+
+// ============================================================
+// COULEURS — ESPACE DONNEUR D'ORDRE
+// Bleu professionnel sobre
+// ============================================================
+const C = {
+  // Primaire bleu
+  primary:      "#2C5282",
+  primaryDark:  "#1A365D",
+  primaryLight: "#EBF4FF",
+  accent:       "#3182CE",
+
+  // Orange pour alertes
+  orange:       "#C05621",
+  orangeBg:     "#FFFAF0",
+
+  // Fond & surfaces
+  bg:           "#F0F4F8",
+  surface:      "#FFFFFF",
+  surfaceHover: "#F7FAFC",
+  border:       "#E2E8F0",
+  borderLight:  "#EDF2F7",
+
+  // Textes
+  text:         "#1A202C",
+  textSec:      "#4A5568",
+  textMuted:    "#A0AEC0",
+
+  // Statuts
+  encoursBg:    "#EBF8FF",
+  encours:      "#2B6CB0",
+  avenirBg:     "#FAF5FF",
+  avenir:       "#6B46C1",
+  validerBg:    "#FFFAF0",
+  valider:      "#C05621",
+  rougeBg:      "#FFF5F5",
+  rouge:        "#C53030",
+  passeeBg:     "#F7FAFC",
+  passee:       "#718096",
+
+  // Stats
+  star:         "#D69E2E",
+  green:        "#276749",
+  greenBg:      "#F0FFF4",
+};
+
+// ============================================================
+// DONNÉES
+// ============================================================
+const PRESTS = [
+  { key:"lavage",    label:"Lavage",              prix:30,  inclus:false },
+  { key:"plein",     label:"Plein carburant",      prix:25,  inclus:false },
+  { key:"docs",      label:"Docs administratifs",  prix:0,   inclus:true  },
+  { key:"main",      label:"Mise en main",         prix:20,  inclus:false },
+  { key:"photos",    label:"Photos véhicule",      prix:15,  inclus:false },
+  { key:"assurance", label:"Assurance transport",  prix:45,  inclus:false },
+];
+
+const NAV_SECTIONS = [
+  { label: "Missions", items: [
+    { key:"dashboard",    label:"Tableau de bord" },
+    { key:"nouvelle",     label:"Nouvelle mission",  accent:true },
+    { key:"en_cours",     label:"En cours",          badge:0 },
+    { key:"terminees",    label:"Terminées",          badge:0 },
+    { key:"passees",      label:"Passées" },
+    { key:"a_venir",      label:"À venir",            badge:0 },
+  ]},
+  { label: "Gestion", items: [
+    { key:"documents",    label:"Documents" },
+    { key:"societes",     label:"Mes sociétés" },
+    { key:"facturation",  label:"Facturation" },
+    { key:"reclamations", label:"Réclamations",       badge:0 },
+  ]},
+  { label: "Administration", items: [
+    { key:"admins",       label:"Gérer mes accès" },
+    { key:"parametres",   label:"Paramètres" },
+  ]},
+];
+
+// ============================================================
+// ATOMES
+// ============================================================
+function Stars({ count, max=5 }) {
+  return (
+    <span style={{display:"inline-flex",gap:2}}>
+      {Array.from({length:max}).map((_,i) => (
+        <span key={i} style={{color:i<count?C.star:"#E2E8F0",fontSize:12}}>★</span>
+      ))}
+    </span>
+  );
+}
+
+function Badge({ statut }) {
+  const M = {
+    en_cours:    { l:"En cours",    bg:C.encoursBg, c:C.encours },
+    a_valider:   { l:"À valider",   bg:C.validerBg, c:C.valider },
+    reclamation: { l:"Réclamation", bg:C.rougeBg,   c:C.rouge   },
+    a_venir:     { l:"À venir",     bg:C.avenirBg,  c:C.avenir  },
+    passee:      { l:"Passée",      bg:C.passeeBg,  c:C.passee  },
+  };
+  const s = M[statut] || M.passee;
+  return (
+    <span style={{display:"inline-flex",alignItems:"center",gap:5,padding:"3px 10px",borderRadius:6,fontSize:11,fontWeight:600,background:s.bg,color:s.c,whiteSpace:"nowrap",border:`1px solid ${s.c}22`}}>
+      <span style={{width:6,height:6,borderRadius:"50%",background:s.c,display:"inline-block"}}></span>
+      {s.l}
+    </span>
+  );
+}
+
+function Btn({ children, v="primary", onClick, style={}, full=false }) {
+  const [h, setH] = useState(false);
+  const base = {
+    display:"inline-flex", alignItems:"center", gap:6,
+    padding:"9px 20px", borderRadius:8, fontSize:13,
+    fontWeight:600, border:"none", cursor:"pointer",
+    fontFamily:"Inter,sans-serif", transition:"all 0.15s",
+    whiteSpace:"nowrap", width:full?"100%":undefined,
+    justifyContent:full?"center":undefined,
+  };
+  const V = {
+    primary: { background:h?C.primaryDark:C.primary, color:"#fff", boxShadow:h?"0 4px 12px rgba(44,82,130,0.3)":"0 1px 3px rgba(44,82,130,0.2)" },
+    ghost:   { background:h?C.bg:"transparent", color:C.textSec, border:`1.5px solid ${C.border}` },
+    outline: { background:h?C.primary:"transparent", color:h?"#fff":C.primary, border:`1.5px solid ${C.primary}` },
+    danger:  { background:h?"#9B2C2C":C.rouge, color:"#fff" },
+  };
+  return (
+    <button onClick={onClick} style={{...base,...V[v],...style}}
+      onMouseEnter={()=>setH(true)} onMouseLeave={()=>setH(false)}>
+      {children}
+    </button>
+  );
+}
+
+function Input({ label, value, onChange, placeholder, type="text", note }) {
+  const [f, setF] = useState(false);
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:5}}>
+      {label && <label style={{fontSize:12,fontWeight:600,color:C.textSec,textTransform:"uppercase",letterSpacing:"0.05em"}}>{label}</label>}
+      <input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder}
+        style={{padding:"11px 14px",border:`1.5px solid ${f?C.accent:C.border}`,borderRadius:8,fontSize:14,color:C.text,outline:"none",background:C.surface,transition:"all 0.15s",width:"100%",boxShadow:f?"0 0 0 3px rgba(49,130,206,0.1)":"none"}}
+        onFocus={()=>setF(true)} onBlur={()=>setF(false)}/>
+      {note && <span style={{fontSize:11,color:C.textMuted}}>{note}</span>}
+    </div>
+  );
+}
+
+function Card({ children, style={} }) {
+  return (
+    <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,boxShadow:"0 1px 3px rgba(0,0,0,0.06)",overflow:"hidden",...style}}>
+      {children}
+    </div>
+  );
+}
+
+function Toast({ msg, type }) {
+  const colors = { success:C.green, error:C.rouge, warning:C.orange };
+  return (
+    <div style={{position:"fixed",bottom:24,right:24,zIndex:600,background:C.text,color:"#fff",padding:"14px 20px",borderRadius:10,boxShadow:"0 8px 30px rgba(0,0,0,0.2)",fontSize:13,display:"flex",alignItems:"center",gap:10,borderLeft:`4px solid ${colors[type]||C.green}`,maxWidth:340,animation:"toastIn 0.3s ease"}}>
+      <span style={{color:colors[type]||C.green,fontWeight:700}}>{type==="success"?"✓":type==="error"?"✕":"!"}</span>
+      <span>{msg}</span>
+    </div>
+  );
+}
+
+// Graphique camembert SVG simple
+function PieChart({ data, size=120 }) {
+  let cumul = 0;
+  const total = data.reduce((a,d)=>a+d.value,0);
+  const slices = data.map(d => {
+    const start = cumul / total * 360;
+    const angle = d.value / total * 360;
+    cumul += d.value;
+    return { ...d, start, angle };
+  });
+
+  function slice(start, angle, r=46, cx=60, cy=60) {
+    const s = (start - 90) * Math.PI / 180;
+    const e = (start + angle - 90) * Math.PI / 180;
+    const x1 = cx + r * Math.cos(s), y1 = cy + r * Math.sin(s);
+    const x2 = cx + r * Math.cos(e), y2 = cy + r * Math.sin(e);
+    const large = angle > 180 ? 1 : 0;
+    return `M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${large},1 ${x2},${y2} Z`;
+  }
+
+  return (
+    <svg width={size} height={size} viewBox="0 0 120 120">
+      <circle cx="60" cy="60" r="46" fill={C.border}/>
+      {slices.map((s,i) => (
+        <path key={i} d={slice(s.start, s.angle)} fill={s.color} opacity="0.9"/>
+      ))}
+      <circle cx="60" cy="60" r="28" fill={C.surface}/>
+    </svg>
+  );
+}
+
+function EmptyState({ title, subtitle }) {
+  return (
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"60px 20px",gap:12}}>
+      <div style={{width:48,height:48,borderRadius:12,background:C.primaryLight,display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <span style={{fontSize:22,color:C.primary}}>+</span>
+      </div>
+      <div style={{fontFamily:"Syne,sans-serif",fontSize:17,fontWeight:700,color:C.text}}>{title}</div>
+      <div style={{fontSize:13,color:C.textMuted,textAlign:"center",maxWidth:280}}>{subtitle}</div>
+    </div>
+  );
+}
+
+function Placeholder({ title }) {
+  return (
+    <div style={{animation:"fadeUp 0.3s ease"}}>
+      <h1 style={{fontFamily:"Syne,sans-serif",fontSize:26,fontWeight:700,color:C.text,marginBottom:8}}>{title}</h1>
+      <p style={{color:C.textMuted,fontSize:13,marginBottom:32}}>Cette section sera disponible dans la prochaine livraison.</p>
+      <Card>
+        <EmptyState title="Bientôt disponible" subtitle="Cette section est en cours de développement. Elle sera livrée prochainement."/>
+      </Card>
+    </div>
+  );
+}
+
+// ============================================================
+// SIDEBAR
+// ============================================================
+function Sidebar({ page, setPage }) {
+  return (
+    <aside style={{position:"fixed",top:0,left:0,width:236,height:"100vh",background:C.surface,borderRight:`1px solid ${C.border}`,display:"flex",flexDirection:"column",zIndex:100,overflowY:"auto"}}>
+
+      {/* Logo */}
+      <div style={{padding:"22px 20px 18px",borderBottom:`1px solid ${C.border}`}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <div style={{width:34,height:34,background:C.primary,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+            <span style={{color:"#fff",fontFamily:"Syne,sans-serif",fontWeight:800,fontSize:15}}>H</span>
+          </div>
+          <div>
+            <div style={{fontFamily:"Syne,sans-serif",fontSize:13,fontWeight:700,color:C.text,lineHeight:1.2}}>Hexagone Confluence</div>
+            <div style={{fontSize:10,color:C.textMuted,textTransform:"uppercase",letterSpacing:"0.1em",marginTop:2}}>Espace client</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Nav */}
+      <nav style={{flex:1,padding:"12px 0"}}>
+        {NAV_SECTIONS.map(sec => (
+          <div key={sec.label} style={{marginBottom:4}}>
+            <div style={{padding:"10px 20px 4px",fontSize:10,fontWeight:700,color:C.textMuted,textTransform:"uppercase",letterSpacing:"0.12em"}}>{sec.label}</div>
+            {sec.items.map(item => {
+              const active = page === item.key;
+              return (
+                <button key={item.key} onClick={() => setPage(item.key)}
+                  style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 20px",width:"100%",border:"none",background:active?C.primaryLight:"transparent",cursor:"pointer",fontFamily:"Inter,sans-serif",fontSize:13,fontWeight:active?600:400,color:item.accent?C.accent:active?C.primary:C.textSec,textAlign:"left",position:"relative",transition:"all 0.15s",borderLeft:active?`3px solid ${C.primary}`:"3px solid transparent"}}
+                  onMouseEnter={e=>{if(!active)e.currentTarget.style.background=C.bg}}
+                  onMouseLeave={e=>{if(!active)e.currentTarget.style.background="transparent"}}>
+                  <span>{item.label}</span>
+                  {item.badge !== undefined && item.badge > 0 && (
+                    <span style={{background:C.primary,color:"#fff",borderRadius:999,fontSize:10,fontWeight:700,minWidth:18,height:18,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 5px"}}>{item.badge}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </nav>
+
+      {/* User */}
+      <div style={{padding:"14px 20px",borderTop:`1px solid ${C.border}`}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <div style={{width:32,height:32,borderRadius:"50%",background:C.primary,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,flexShrink:0}}>A</div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:12,fontWeight:600,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Mon compte</div>
+            <div style={{fontSize:11,color:C.textMuted}}>Administrateur</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+// ============================================================
+// TOPBAR
+// ============================================================
+function Topbar({ showToast }) {
+  return (
+    <header style={{position:"fixed",top:0,left:236,right:0,height:60,background:C.surface,borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 28px",zIndex:200}}>
+      <div style={{display:"flex",alignItems:"center",gap:12}}>
+        {/* Sélecteur client */}
+        <select style={{padding:"7px 12px",border:`1.5px solid ${C.border}`,borderRadius:8,fontSize:13,color:C.text,background:C.surface,outline:"none",cursor:"pointer",fontFamily:"Inter,sans-serif"}}>
+          <option>Sélectionner un client</option>
+          <option>Groupe Dupont Auto</option>
+          <option>AutoLease France</option>
+        </select>
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        {/* Notif */}
+        <button onClick={()=>showToast("Aucune nouvelle notification","success")}
+          style={{width:38,height:38,borderRadius:8,background:C.bg,border:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",position:"relative",color:C.textSec,fontSize:15,transition:"background 0.15s"}}
+          onMouseEnter={e=>e.currentTarget.style.background=C.border}
+          onMouseLeave={e=>e.currentTarget.style.background=C.bg}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        </button>
+        {/* Avatar */}
+        <div style={{width:34,height:34,borderRadius:"50%",background:C.primary,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,cursor:"pointer"}}>A</div>
+      </div>
+    </header>
+  );
+}
+
+// ============================================================
+// PAGE DASHBOARD
+// ============================================================
+function Dashboard({ setPage, showToast }) {
+
+  const statsData = [
+    { label:"Moins de 300 km",  value:35, color:"#3182CE" },
+    { label:"300 à 600 km",     value:45, color:"#2C5282" },
+    { label:"Plus de 600 km",   value:20, color:"#90CDF4" },
+  ];
+
+  const statutData = [
+    { label:"En cours",    value:4,  color:"#3182CE" },
+    { label:"À venir",     value:6,  color:"#6B46C1" },
+    { label:"Terminées",   value:37, color:"#276749" },
+  ];
+
+  return (
+    <div style={{animation:"fadeUp 0.3s ease"}}>
+
+      {/* Header */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:28}}>
+        <div>
+          <h1 style={{fontFamily:"Syne,sans-serif",fontSize:26,fontWeight:700,color:C.text,margin:0}}>Tableau de bord</h1>
+          <p style={{color:C.textMuted,fontSize:13,marginTop:4}}>Lundi 9 juin 2026</p>
+        </div>
+        <Btn onClick={()=>setPage("nouvelle")}>+ Nouvelle mission</Btn>
+      </div>
+
+      {/* Stats camemberts */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}}>
+
+        {/* Répartition distances */}
+        <Card>
+          <div style={{padding:"20px 24px"}}>
+            <div style={{fontSize:11,fontWeight:700,color:C.textMuted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:16}}>Répartition des distances</div>
+            <div style={{display:"flex",alignItems:"center",gap:24}}>
+              <PieChart data={statsData} size={110}/>
+              <div style={{display:"flex",flexDirection:"column",gap:8,flex:1}}>
+                {statsData.map(d=>(
+                  <div key={d.label} style={{display:"flex",alignItems:"center",gap:8}}>
+                    <div style={{width:10,height:10,borderRadius:3,background:d.color,flexShrink:0}}></div>
+                    <span style={{fontSize:12,color:C.textSec,flex:1}}>{d.label}</span>
+                    <span style={{fontSize:12,fontWeight:700,color:C.text}}>{d.value}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${C.border}`,display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+              <div>
+                <div style={{fontSize:11,color:C.textMuted,marginBottom:2}}>Moyenne km / mission</div>
+                <div style={{fontFamily:"Syne,sans-serif",fontSize:20,fontWeight:700,color:C.primary}}>412 km</div>
+              </div>
+              <div>
+                <div style={{fontSize:11,color:C.textMuted,marginBottom:2}}>Prix moyen</div>
+                <div style={{fontFamily:"Syne,sans-serif",fontSize:20,fontWeight:700,color:C.primary}}>318 €</div>
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        {/* Répartition statuts */}
+        <Card>
+          <div style={{padding:"20px 24px"}}>
+            <div style={{fontSize:11,fontWeight:700,color:C.textMuted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:16}}>Statut des missions</div>
+            <div style={{display:"flex",alignItems:"center",gap:24}}>
+              <PieChart data={statutData} size={110}/>
+              <div style={{display:"flex",flexDirection:"column",gap:8,flex:1}}>
+                {statutData.map(d=>(
+                  <div key={d.label} style={{display:"flex",alignItems:"center",gap:8}}>
+                    <div style={{width:10,height:10,borderRadius:3,background:d.color,flexShrink:0}}></div>
+                    <span style={{fontSize:12,color:C.textSec,flex:1}}>{d.label}</span>
+                    <span style={{fontSize:12,fontWeight:700,color:C.text}}>{d.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${C.border}`,display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+              <div>
+                <div style={{fontSize:11,color:C.textMuted,marginBottom:2}}>Missions ce mois</div>
+                <div style={{fontFamily:"Syne,sans-serif",fontSize:20,fontWeight:700,color:C.primary}}>47</div>
+              </div>
+              <div>
+                <div style={{fontSize:11,color:C.textMuted,marginBottom:2}}>CA total HT</div>
+                <div style={{fontFamily:"Syne,sans-serif",fontSize:20,fontWeight:700,color:C.primary}}>14 946 €</div>
+              </div>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* Tableau missions vide */}
+      <Card>
+        <div style={{padding:"18px 24px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{fontFamily:"Syne,sans-serif",fontSize:16,fontWeight:700,color:C.text}}>Mes missions</span>
+          <div style={{display:"flex",gap:4}}>
+            {["Toutes","En cours","À valider","À venir","Réclamations"].map((t,i)=>(
+              <button key={t} style={{padding:"5px 12px",borderRadius:6,fontSize:12,fontWeight:i===0?600:400,border:`1px solid ${i===0?C.primary:C.border}`,background:i===0?C.primaryLight:"transparent",color:i===0?C.primary:C.textSec,cursor:"pointer",fontFamily:"Inter,sans-serif",transition:"all 0.15s"}}>
+                {t}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Table vide */}
+        <div style={{overflowX:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse"}}>
+            <thead>
+              <tr style={{background:C.bg}}>
+                {["Trajet","Véhicule","Société","Date","Statut","Montant","Action"].map(h=>(
+                  <th key={h} style={{padding:"10px 18px",fontSize:11,fontWeight:600,color:C.textMuted,textTransform:"uppercase",letterSpacing:"0.07em",textAlign:"left",borderBottom:`1px solid ${C.border}`,whiteSpace:"nowrap"}}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td colSpan={7}>
+                  <EmptyState
+                    title="Aucune mission pour le moment"
+                    subtitle="Créez votre première mission en cliquant sur le bouton + Nouvelle mission"
+                  />
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ============================================================
+// PAGE NOUVELLE MISSION
+// ============================================================
+function NouvelleMission({ onBack, showToast }) {
+  const [step, setStep]       = useState(1);
+  const [depart, setDepart]   = useState("");
+  const [arrivee, setArrivee] = useState("");
+  const [date, setDate]       = useState("");
+  const [immat, setImmat]     = useState("");
+  const [marque, setMarque]   = useState("");
+  const [prests, setPrests]   = useState({ docs:true });
+  const ref = useState(()=>Math.floor(Math.random()*9000+1000))[0];
+
+  const toggle = k => setPrests(p=>({...p,[k]:!p[k]}));
+  const base  = 350;
+  const extra = PRESTS.filter(p=>prests[p.key]&&!p.inclus).reduce((a,p)=>a+p.prix,0);
+  const total = base + extra;
+  const ttc   = (total*1.2).toFixed(2).replace(".",",");
+
+  const STEPS = ["Trajet & véhicule","Prestations","Récapitulatif","Confirmation"];
+
+  const next = () => {
+    if(step===1 && (!depart||!arrivee||!date)) {
+      showToast("Veuillez renseigner le trajet et la date.","error"); return;
+    }
+    if(step===3) showToast("Mission envoyée avec succès !","success");
+    setStep(s=>Math.min(s+1,4));
+  };
+
+  return (
+    <div style={{maxWidth:780,margin:"0 auto",animation:"fadeUp 0.3s ease"}}>
+
+      {/* Header */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:28}}>
+        <div>
+          <h1 style={{fontFamily:"Syne,sans-serif",fontSize:26,fontWeight:700,color:C.text,margin:0}}>Nouvelle mission</h1>
+          <p style={{color:C.textMuted,fontSize:13,marginTop:4}}>Renseignez les informations pour générer votre devis</p>
+        </div>
+        <Btn v="ghost" onClick={onBack}>Annuler</Btn>
+      </div>
+
+      {/* Stepper */}
+      <div style={{display:"flex",alignItems:"center",marginBottom:28}}>
+        {STEPS.map((label,i) => {
+          const n=i+1, done=n<step, active=n===step;
+          return (
+            <div key={n} style={{display:"flex",alignItems:"center",flex:n<STEPS.length?1:0}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <div style={{width:28,height:28,borderRadius:"50%",background:done?C.green:active?C.primary:"transparent",border:`2px solid ${done?C.green:active?C.primary:C.border}`,color:done||active?"#fff":C.textMuted,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,flexShrink:0,transition:"all 0.3s"}}>
+                  {done?"✓":n}
+                </div>
+                <span style={{fontSize:12,fontWeight:active?600:400,color:active?C.primary:done?C.green:C.textMuted,whiteSpace:"nowrap"}}>{label}</span>
+              </div>
+              {n<STEPS.length && <div style={{flex:1,height:2,background:done?C.green:C.border,margin:"0 10px",transition:"background 0.4s"}}/>}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ÉTAPE 1 */}
+      {step===1 && (
+        <Card>
+          <div style={{padding:"20px 24px",borderBottom:`1px solid ${C.border}`}}>
+            <span style={{fontSize:11,fontWeight:700,color:C.primary,textTransform:"uppercase",letterSpacing:"0.1em"}}>Étape 1 — Trajet & véhicule</span>
+          </div>
+          <div style={{padding:24,display:"flex",flexDirection:"column",gap:16}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+              <Input label="Adresse de départ" value={depart} onChange={setDepart} placeholder="Ex : 1 rue de Lyon, 51100 Reims"/>
+              <Input label="Adresse d'arrivée" value={arrivee} onChange={setArrivee} placeholder="Ex : 14 avenue Foch, 13008 Marseille"/>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+              <Input label="Date de départ souhaitée" type="date" value={date} onChange={setDate}/>
+              <Input label="Immatriculation" value={immat} onChange={v=>setImmat(v.toUpperCase())} placeholder="Ex : AB123CD" note="Les informations du véhicule seront récupérées automatiquement"/>
+            </div>
+            {immat.length >= 7 && (
+              <div style={{background:C.primaryLight,border:`1px solid ${C.accent}22`,borderRadius:8,padding:"12px 16px",display:"flex",gap:16,alignItems:"center"}}>
+                <div style={{fontSize:12,color:C.textSec}}>Véhicule détecté :</div>
+                <Input label="" value={marque} onChange={setMarque} placeholder="Marque et modèle"/>
+                <div style={{fontSize:11,color:C.textMuted,whiteSpace:"nowrap"}}>Modifiable si incorrect</div>
+              </div>
+            )}
+            {depart && arrivee && (
+              <div style={{display:"inline-flex",alignItems:"center",gap:10,background:C.primaryLight,border:`1px solid ${C.accent}33`,borderRadius:8,padding:"10px 16px"}}>
+                <span style={{fontSize:13,color:C.textSec}}>Distance estimée :</span>
+                <span style={{fontFamily:"Syne,sans-serif",fontSize:18,fontWeight:700,color:C.primary}}>412 km</span>
+                <span style={{fontSize:12,color:C.textMuted}}>— Tranche tarifaire : 400–500 km</span>
+              </div>
+            )}
+          </div>
+          <div style={{padding:"14px 24px",borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"flex-end"}}>
+            <Btn onClick={next}>Suivant —</Btn>
+          </div>
+        </Card>
+      )}
+
+      {/* ÉTAPE 2 */}
+      {step===2 && (
+        <Card>
+          <div style={{padding:"20px 24px",borderBottom:`1px solid ${C.border}`}}>
+            <span style={{fontSize:11,fontWeight:700,color:C.primary,textTransform:"uppercase",letterSpacing:"0.1em"}}>Étape 2 — Prestations souhaitées</span>
+          </div>
+          <div style={{padding:24}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:8}}>
+              {PRESTS.map(p => {
+                const sel = prests[p.key];
+                return (
+                  <div key={p.key} onClick={()=>toggle(p.key)}
+                    style={{border:`1.5px solid ${sel?C.primary:C.border}`,background:sel?C.primaryLight:C.surface,borderRadius:10,padding:"14px 16px",cursor:"pointer",transition:"all 0.15s",position:"relative",userSelect:"none"}}>
+                    {sel && (
+                      <div style={{position:"absolute",top:10,right:10,width:18,height:18,background:C.primary,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:10,fontWeight:700}}>✓</div>
+                    )}
+                    <div style={{fontSize:13,fontWeight:600,color:sel?C.primary:C.text,marginBottom:4}}>{p.label}</div>
+                    <div style={{fontSize:12,fontWeight:700,color:p.inclus?C.textMuted:C.accent}}>{p.inclus?"Inclus":`+${p.prix} €`}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <div style={{padding:"14px 24px",borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between"}}>
+            <Btn v="ghost" onClick={()=>setStep(1)}>— Retour</Btn>
+            <Btn onClick={next}>Suivant —</Btn>
+          </div>
+        </Card>
+      )}
+
+      {/* ÉTAPE 3 */}
+      {step===3 && (
+        <Card>
+          <div style={{padding:"20px 24px",borderBottom:`1px solid ${C.border}`}}>
+            <span style={{fontSize:11,fontWeight:700,color:C.primary,textTransform:"uppercase",letterSpacing:"0.1em"}}>Étape 3 — Récapitulatif & devis</span>
+          </div>
+          <div style={{padding:24}}>
+            <div style={{background:C.bg,borderRadius:10,padding:16,marginBottom:20}}>
+              <div style={{fontFamily:"Syne,sans-serif",fontSize:18,fontWeight:700,color:C.text}}>{depart||"—"} → {arrivee||"—"} · 412 km</div>
+              <div style={{fontSize:13,color:C.textSec,marginTop:4}}>{date||"—"} · Hexagone Confluence</div>
+            </div>
+            <div style={{border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden",marginBottom:16}}>
+              <div style={{display:"flex",justifyContent:"space-between",padding:"12px 16px",borderBottom:`1px solid ${C.border}`,fontSize:13,color:C.textSec}}>
+                <span>Convoyage (412 km)</span><strong style={{color:C.text}}>{base} € HT</strong>
+              </div>
+              {PRESTS.filter(p=>prests[p.key]).map(p=>(
+                <div key={p.key} style={{display:"flex",justifyContent:"space-between",padding:"12px 16px",borderBottom:`1px solid ${C.border}`,fontSize:13,color:C.textSec}}>
+                  <span>{p.label}</span><strong style={{color:p.inclus?C.green:C.text}}>{p.inclus?"Inclus":`+${p.prix} € HT`}</strong>
+                </div>
+              ))}
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 16px"}}>
+                <div>
+                  <div style={{fontSize:11,fontWeight:700,color:C.textMuted,textTransform:"uppercase",letterSpacing:"0.08em"}}>Total estimé</div>
+                  <div style={{fontSize:11,color:C.textMuted,marginTop:2}}>Soit {ttc} € TTC</div>
+                </div>
+                <div style={{fontFamily:"Syne,sans-serif",fontSize:30,fontWeight:700,color:C.primary}}>{total} € HT</div>
+              </div>
+            </div>
+            <div style={{background:"#FFFBEB",border:"1px solid #F6E05E",borderRadius:8,padding:"12px 14px",fontSize:13,color:"#744210"}}>
+              <strong>Conditions d'annulation :</strong> Plus de 48h : gratuite · Entre 24h et 48h : 30% · Jour J : 60%
+            </div>
+          </div>
+          <div style={{padding:"14px 24px",borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between"}}>
+            <Btn v="ghost" onClick={()=>setStep(2)}>— Retour</Btn>
+            <Btn onClick={next}>Valider et envoyer</Btn>
+          </div>
+        </Card>
+      )}
+
+      {/* ÉTAPE 4 */}
+      {step===4 && (
+        <Card>
+          <div style={{padding:"48px 28px",textAlign:"center"}}>
+            <div style={{width:56,height:56,borderRadius:"50%",background:C.greenBg,border:`2px solid ${C.green}`,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 20px",fontSize:22,color:C.green,fontWeight:700}}>✓</div>
+            <h2 style={{fontFamily:"Syne,sans-serif",fontSize:24,fontWeight:700,color:C.text,marginBottom:10}}>Mission envoyée</h2>
+            <p style={{fontSize:14,color:C.textSec,maxWidth:400,margin:"0 auto 24px"}}>
+              Votre demande a été transmise à Hexagone Confluence. Vous recevrez une confirmation dès qu'un convoyeur sera assigné.
+            </p>
+            <div style={{display:"inline-flex",alignItems:"center",gap:10,background:C.bg,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 20px",marginBottom:28}}>
+              <span style={{fontSize:12,color:C.textMuted}}>Référence</span>
+              <strong style={{fontFamily:"Syne,sans-serif",fontSize:16,color:C.primary}}>#HC-2026-{ref}</strong>
+            </div>
+            <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap"}}>
+              <Btn v="outline" onClick={()=>showToast("Génération PDF — à brancher côté développeur","success")}>Télécharger le bon de commande</Btn>
+              <Btn onClick={onBack}>Retour au tableau de bord</Btn>
+            </div>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// APP
+// ============================================================
+function App() {
+  const [page,  setPage]  = useState("dashboard");
+  const [toast, setToast] = useState(null);
+
+  function showToast(msg, type="success") {
+    setToast({msg, type});
+    setTimeout(()=>setToast(null), 3500);
+  }
+
+  const PAGES = {
+    dashboard:   <Dashboard setPage={setPage} showToast={showToast}/>,
+    nouvelle:    <NouvelleMission onBack={()=>setPage("dashboard")} showToast={showToast}/>,
+    en_cours:    <Placeholder title="Missions en cours"/>,
+    terminees:   <Placeholder title="Missions terminées"/>,
+    passees:     <Placeholder title="Missions passées"/>,
+    a_venir:     <Placeholder title="Missions à venir"/>,
+    documents:   <Placeholder title="Documents"/>,
+    societes:    <Placeholder title="Mes sociétés"/>,
+    facturation: <Placeholder title="Facturation"/>,
+    reclamations:<Placeholder title="Réclamations"/>,
+    admins:      <Placeholder title="Gérer mes accès"/>,
+    parametres:  <Placeholder title="Paramètres"/>,
+  };
+
+  return (
+    <div style={{display:"flex",minHeight:"100vh",fontFamily:"Inter,sans-serif",background:C.bg}}>
+      <Sidebar page={page} setPage={setPage}/>
+      <div style={{flex:1,marginLeft:236}}>
+        <Topbar showToast={showToast}/>
+        <main style={{padding:"80px 28px 48px"}}>
+          {PAGES[page]||<Placeholder title={page}/>}
+        </main>
+      </div>
+      {toast && <Toast msg={toast.msg} type={toast.type}/>}
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap');
+        * { box-sizing:border-box; margin:0; padding:0; }
+      `}</style>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
